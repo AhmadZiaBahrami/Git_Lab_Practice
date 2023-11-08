@@ -1,0 +1,225 @@
+
+<!-- 
+This application was developed by Ahmad Zia Bahram, student ID: 2591550, to fulfill 
+the requirements of the D3 assignment for the Programming Language for Data Engineering course.
+In its creation, I utilized a variety of resources, primarily the tutorial available at 
+'https://bost.ocks.org/mike/map/','https://devdocs.io/d3/','http://using-d3js.com/05_08_links.html'
+ https://www.w3schools.com/js/js_graphics_d3js.asp, 
+ and 'https://www.pluralsight.com/guides/create-tooltips-in-d3js'. 
+ Additionally, I utilized Professor Acobley's 
+GitHub account and used the code from 'https://github.com/acobley/circles/releases/tag/v1.0'
+for implementing the circle function to pinpoint each town on the UK Map. I referenced the 
+following YouTube videos for guidance: 
+- https://www.youtube.com/watch?v=OKw0KCH9rZA
+- https://www.youtube.com/watch?v=G-VggTK-Wlg&t=14s 
+- https://www.youtube.com/watch?v=aNbgrqRuoiE&t=173s.
+
+For troubleshooting and validation, I occasionally consulted ChatGPT 3.5, and for the 
+documentation and grammar aspects, AI tools were employed. The entirety of the code was 
+written independently by myself.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>UK Map</title>
+  
+  <!-- D3.js library for data visualization -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  
+  <!-- TopoJSON for encoding topology in JSON -->
+  <script src="https://d3js.org/topojson.v3.min.js"></script>
+  
+  <!-- Inline CSS for styling tooltip and towns on the map -->
+  <style>
+    /* Tooltip styling */
+    .tooltip {
+      position: absolute; 
+      text-align: center; 
+      padding: 8px; 
+      font: 12px sans-serif; 
+      background: lightsteelblue; 
+      border: 0; 
+      border-radius: 8px; 
+      pointer-events: none; 
+      opacity: 0; 
+      transition: opacity 0.3s; 
+    }
+
+    /* Town circles styling */
+    .town {
+      fill: red; 
+      stroke: white; /* Stroke color around the towns */
+    }
+
+    /* City labels styling */
+    .city-label {
+      pointer-events: none; 
+      font-size: 12px; 
+      fill: #333; 
+      transition: fill 0.5s; 
+    }
+  </style>
+</head>
+<body>
+  <!-- Button to trigger data reload -->
+  <button id="reload-data">Reload Data</button>
+  
+  <!-- Slider to select the number of towns -->
+  <input type="range" id="town-slider" min="1" max="500" value="50">
+  
+  <!-- Span to show the current number of towns selected -->
+  <span id="town-count">Towns: 50</span>
+  
+  <!-- SVG element to draw the UK map -->
+  <svg id="uk-map" width="960" height="1160"></svg>
+
+  <script>
+    // D3 selection for the SVG element and defining its dimensions
+    const svg = d3.select("#uk-map"),
+          width = +svg.attr("width"),
+          height = +svg.attr("height");
+
+    // Defining the map projection for the UK
+    // I am using the https://bost.ocks.org/mike/map/ link for reference this part: 
+    const projection = d3.geoAlbers()
+      .center([0, 55.4]) // Centering the projection
+      .rotate([4.4, 0]) // Rotating the projection
+      .scale(6000) // Scaling the projection
+      .translate([width / 2, height / 2]); // Translating the projection to the center of the SVG
+
+    // Path generator based on the projection
+    const path = d3.geoPath().projection(projection);
+
+    // Creating the tooltip element and adding it to the body
+    const tooltip = d3.select("body").append("div")
+      .attr("class", "tooltip");
+
+    // Defining the color scale for different countries in the UK
+    const colorScale = d3.scaleOrdinal()
+      .domain(["England", "Scotland", "Wales", "Northern Ireland"])
+      .range(["#f6a800", "#73a839", "#cc4731", "#3690c0"]);
+
+    // Loading the UK map data and creating the map
+    // I am using the https://bost.ocks.org/mike/map/ link for reference this part:
+    d3.json("uk.json").then(function(uk) {
+      svg.selectAll(".country")
+        .data(topojson.feature(uk, uk.objects.ne_10m_admin_0_map_subunits).features)
+        .enter().append("path")
+        .attr("class", function(d) { return "country " + d.properties.NAME; })
+        .attr("d", path)
+        .attr("fill", function(d) { return colorScale(d.properties.NAME); });
+    });
+
+    // Function to show the tooltip on mouseover
+    // I am using the https://bost.ocks.org/mike/map/ link for reference this part:
+    function showTooltip(event, d) {
+      tooltip.style("opacity", 1)
+        .style("left", (event.pageX + 5) + "px")
+        .style("top", (event.pageY - 28) + "px")
+        .html(`Town: ${d.Town}<br>Population: ${d.Population}`);
+
+      d3.select(event.target).transition().style("fill", "blue");
+    }
+
+    // Function to hide the tooltip on mouseout
+    function hideTooltip(event) {
+      tooltip.style("opacity", 0);
+      d3.select(event.target).transition().style("fill", "red");
+    }
+
+    // Function to update the towns displayed on the map based on the selected count
+    // I am using the https://github.com/acobley/circles/releases/tag/v1.0 link 
+    // and https://devdocs.io/d3/  and https://bost.ocks.org/mike/map/ for reference this Function:
+    function updateTowns(townCount) {
+      // Fetching the town data from the server
+      fetch(`http://34.38.72.236/Circles/Towns/${townCount}`)
+        .then(response => response.json())
+        .then(towns => {
+          // Binding town data to circle elements and creating them on the map
+          const townElements = svg.selectAll(".town")
+            .data(towns, d => d.Town);
+
+          // Creating town circles for new data
+          townElements.enter()
+            .append("circle")
+            .attr("class", "town")
+            .attr("r", 0) // Initialize with radius 0 for transition
+            .attr("cx", d => projection([d.lng, d.lat])[0])
+            .attr("cy", d => projection([d.lng, d.lat])[1])
+            .on("mouseover", showTooltip)
+            .on("mouseout", hideTooltip)
+            .transition() // Transition to make circles appear smoothly
+            .attr("r", 5)
+            .style("fill", "red");
+
+          // Removing the circles that are no longer present in the data
+          townElements.exit()
+            .transition() // Transition to make circles disappear smoothly
+            .attr("r", 0)
+            .remove();
+
+          // Updating the city labels with new data
+          const labels = svg.selectAll(".city-label")
+            .data(towns, d => d.Town);
+
+          // Creating labels for new towns
+          labels.enter()
+            .append("text")
+            .attr("class", "city-label")
+            .attr("x", d => projection([d.lng, d.lat])[0])
+            .attr("y", d => projection([d.lng, d.lat])[1])
+            .text(d => d.Town)
+            .style("opacity", 0)
+            .transition()
+            .style("opacity", 1);
+
+          // Removing the labels that are no longer present in the data
+          labels.exit()
+            .transition()
+            .style("opacity", 0)
+            .remove();
+        })
+        .catch(error => console.error(error)); // Error handling for the data fetch
+    }
+
+    // Event listener for the 'Reload Data' button
+    d3.select("#reload-data").on("click", function() {
+      const townCount = d3.select("#town-slider").property("value");
+      updateTowns(townCount); // Updating the map with the selected town count
+    });
+
+    // Event listener for the town slider input
+    d3.select("#town-slider").on("input", function() {
+      const townCount = d3.select(this).property("value");
+      d3.select("#town-count").text(`Towns: ${townCount}`); // Displaying the selected town count
+      updateTowns(townCount); // Updating the map with the selected town count
+    });
+    document.addEventListener('DOMContentLoaded', function() {
+  // Create a new div element
+  // This part is developed by my initiatives
+  var infoDiv = document.createElement("div");
+  infoDiv.id = "student-info";
+  // Set the inner HTML of the div to the message you want to display
+  infoDiv.innerHTML = "<strong>Name:</strong> Ahmad Zia Bahrami<br>" +
+                      "<strong>Student ID:</strong> 2591550<br>" +
+                      "<strong>Email:</strong> <a href='mailto:2591550@example.com'>2591550@example.com</a><br>" +
+                      "<strong>Assignment D3:</strong> Programming Language for Data Engineering";
+
+  // Set styles for the div
+  infoDiv.style.position = "absolute";
+  infoDiv.style.top = "10px";
+  infoDiv.style.left = "10px";
+  infoDiv.style.backgroundColor = "lightgray";
+  infoDiv.style.padding = "10px";
+  infoDiv.style.borderRadius = "5px";
+  infoDiv.style.boxShadow = "0 2px 4px rgba(0,0,0,0.2)";
+
+  // Append the div to the body of the document
+  document.body.appendChild(infoDiv);
+});
+
+    // Initial load of towns with default value
+    updateTowns(50);
+  </script>
+</body>
+</html>
